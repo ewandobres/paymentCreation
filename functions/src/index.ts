@@ -29,36 +29,33 @@ exports.paymentCreation = functions.region('europe-west2').firestore
         const newValue = change.data();
         const userId : String = context.params.userId;
         const paymentId : String = context.params.paymentId;
-        const shopId : String = newValue.shopId
+        //const shopId : String = newValue.shopId
 
-        console.log("shopId is: " + shopId);
-
-        if (newValue.charge !== null) return "Payment Already Processed";
+        console.log(newValue.charge)
+        if (newValue.charge !== undefined) {
+            console.log("already processed")
+            return "Payment Already Processed";
+        }
 
         const paymentRequest = {
             "idempotency_key": crypto.randomBytes(12).toString('hex'),
             "source_id": newValue.nonce,
+            "autocomplete": false,
+            "reference_id":paymentId,
             "amount_money": {
                 amount: parseFloat(newValue.amount),
                 currency: 'GBP'
             },
-            "autocomplete" : false,
-            "order_id": paymentId,
-            "customer_id" : userId,
-            "location_id" : shopId,
         };
 
         async function createPaymentRequest() {
-            const createPaymentResponse = await paymentsApi.createPayment(paymentRequest);
-            console.log(createPaymentResponse.payment);
-            console.log("Payment Request Created")
-            return createPaymentResponse;
+            return await paymentsApi.createPayment(paymentRequest);
         }
 
         async function detailsToFirestore() {
-
+            console.log("calling createPaymentRequest")
             let paymentResponse = await createPaymentRequest();
-
+            console.log("createPaymentRequest returned")
             await admin.firestore()
                 .doc(`/Users/${userId}/Purchases/${paymentId}`)
                 .set(JSON.parse(JSON.stringify(paymentResponse)), {merge: true});
