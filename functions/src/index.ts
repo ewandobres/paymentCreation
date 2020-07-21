@@ -1,34 +1,24 @@
-// The Cloud Functions for Firebase SDK to create Cloud Functions and setup triggers.
-import * as google from "firebase-admin";
-import QueryDocumentSnapshot = google.firestore.QueryDocumentSnapshot;
-import {EventContext} from "firebase-functions";
-
+import * as admin from "firebase-admin";
 const functions = require('firebase-functions');
-
-// The Firebase Admin SDK to access the Firebase Realtime Database.
-const admin = require('firebase-admin');
-admin.initializeApp();
-
+const app = admin.initializeApp();
 import SquareConnect = require('square-connect');
-const {
-    PaymentsApi
-} = require('square-connect');
+import QueryDocumentSnapshot = admin.firestore.QueryDocumentSnapshot;
+import {EventContext} from "firebase-functions";
 const defaultClient = SquareConnect.ApiClient.instance;
-const crypto = require('crypto');
-
-let oauth2 = defaultClient.authentications['oauth2'];
+const firestore = app.firestore()
+const oauth2 = defaultClient.authentications['oauth2'];
 oauth2.accessToken = "EAAAEGHqnSltURHr2q_mAb_beZoBIc3iyteekRCAFWU7PfDh0Qz1mqV-HL-nJl32";
 
-defaultClient.basePath = "https://connect.squareupsandbox.com";
+const crypto = require('crypto');
 
-const paymentsApi = new PaymentsApi(defaultClient);
+defaultClient.basePath = "https://connect.squareupsandbox.com";
 
 exports.paymentCreation = functions.region('europe-west2').firestore
     .document('Users/{userId}/Purchases/{paymentId}')
     .onCreate(( change : QueryDocumentSnapshot, context : EventContext) => {
         const newValue = change.data();
-        const userId : String = context.params.userId;
-        const paymentId : String = context.params.paymentId;
+        const userId : string = context.params.userId;
+        const paymentId : string = context.params.paymentId;
         //const shopId : String = newValue.shopId
 
         console.log(newValue.charge)
@@ -37,18 +27,38 @@ exports.paymentCreation = functions.region('europe-west2').firestore
             return "Payment Already Processed";
         }
 
-        const paymentRequest = {
-            "idempotency_key": crypto.randomBytes(12).toString('hex'),
-            "source_id": newValue.nonce,
-            "autocomplete": false,
-            "reference_id":paymentId,
-            "amount_money": {
-                amount: parseFloat(newValue.amount),
-                currency: 'GBP'
-            },
-        };
+        let paymentRequest: SquareConnect.CreatePaymentRequest;
+
+        async function constructPaymentRequest() {
+            const documentSnapshot = await firestore.collection("Users").doc(userId).get()
+            const data = documentSnapshot.data()
+            let square_id
+
+            if(data !== undefined){
+                square_id = data.square_id
+            }
+
+            paymentRequest = {
+                "idempotency_key": crypto.randomBytes(12).toString('hex'),
+                "source_id": newValue.nonce,
+                "autocomplete": false,
+                "reference_id":paymentId,
+                "customer_id":square_id,
+                "amount_money": {
+                    amount: parseFloat(newValue.amount),
+                    currency: 'GBP'
+                },
+            };
+        }
+
+
 
         async function createPaymentRequest() {
+            await constructPaymentRequest();
+
+            const paymentsApi = new SquareConnect.PaymentsApi();
+
+            // @ts-ignore
             return await paymentsApi.createPayment(paymentRequest);
         }
 
