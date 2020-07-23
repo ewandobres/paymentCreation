@@ -15,11 +15,11 @@ defaultClient.basePath = "https://connect.squareupsandbox.com";
 
 exports.paymentCreation = functions.region('europe-west2').firestore
     .document('Users/{userId}/Purchases/{paymentId}')
-    .onCreate(( change : QueryDocumentSnapshot, context : EventContext) => {
+    .onCreate(async ( change : QueryDocumentSnapshot, context : EventContext) => {
         const newValue = change.data();
         const userId : string = context.params.userId;
         const paymentId : string = context.params.paymentId;
-        //const shopId : String = newValue.shopId
+        const shopId : string = newValue.shopId
 
         console.log(newValue.charge)
         if (newValue.charge !== undefined) {
@@ -27,6 +27,15 @@ exports.paymentCreation = functions.region('europe-west2').firestore
             return "Payment Already Processed";
         }
 
+        let location_id : string;
+
+        if(shopId !== undefined){
+            const shopDocumentData = (await firestore.collection("Shops").doc(shopId).get()).data();
+
+            if(shopDocumentData != undefined){
+                location_id = shopDocumentData.square_location
+            }
+        }
         let paymentRequest: SquareConnect.CreatePaymentRequest;
 
         async function constructPaymentRequest() {
@@ -44,6 +53,7 @@ exports.paymentCreation = functions.region('europe-west2').firestore
                 "autocomplete": false,
                 "reference_id":paymentId,
                 "customer_id":square_id,
+                "location_id":location_id,
                 "amount_money": {
                     amount: parseFloat(newValue.amount),
                     currency: 'GBP'
